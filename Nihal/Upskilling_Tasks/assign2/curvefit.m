@@ -1,0 +1,18 @@
+close all;
+a = 2; b = -4; c = 5;
+x = rand(100,1);
+y = a*(x.^3)+b*(x.^2)+c*x;
+delta = 0.02;
+y_noisy = y + 2*delta*rand(size(y))-delta;
+coeffs = polyfit(x, y_noisy, 3);
+y_fitted = polyval(coeffs, x);
+[x_sorted, idx] = sort(x);
+y_sorted = y(idx);
+y_noisy_sorted = y_noisy(idx);
+y_fitted_sorted = y_fitted(idx);
+hold on;
+plot(x_sorted, y_sorted, "--");
+plot(x_sorted, y_noisy_sorted, '.');
+plot(x_sorted, y_fitted_sorted);
+legend("Original Function","Noisy Function", "Fitted Function");
+hold off;
