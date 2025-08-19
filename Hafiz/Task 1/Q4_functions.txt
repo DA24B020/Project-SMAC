@@ -1,0 +1,47 @@
+=== Q4: INTERPOLATION FUNCTIONS REPORT ===
+
+DATA POINTS:
+  (0, 2.5)
+  (1, 0.5)
+  (2, 0.5)
+  (3, 2.0)
+  (4, 2.0)
+  (5, 1.5)
+  (9, 0.0)
+
+=== NATURAL CUBIC SPLINE ===
+Properties:
+- Piecewise cubic polynomials
+- C² continuous (smooth)
+- Natural boundary conditions: f''(x₀) = f''(xₙ) = 0
+- Minimizes curvature
+
+Spline segments:
+[0, 1]: S1(x) = 0.401979x³ + 0.000000x² + -2.401979x + 2.500000
+[1, 2]: S2(x) = -0.009894x³ + 1.205937x² + -1.196042x + 0.500000
+[2, 3]: S3(x) = -0.862402x³ + 1.176254x² + 1.186148x + 0.500000
+[3, 4]: S4(x) = 0.459501x³ + -1.410951x² + 0.951450x + 2.000000
+[4, 5]: S5(x) = 0.024398x³ + -0.032448x² + -0.491949x + 2.000000
+[5, 9]: S6(x) = -0.003395x³ + 0.040745x² + -0.483653x + 1.500000
+
+=== POLYNOMIAL INTERPOLATION ===
+Degree: 6
+Properties:
+- Single polynomial through all points
+- C^∞ continuous (infinitely smooth)
+- May exhibit Runge's phenomenon (oscillation)
+- Unique polynomial of minimal degree
+
+Polynomial equation:
+P(x) = -0.008573x^6 + 0.182763x^5 - 1.374545x^4 + 4.366443x^3 - 4.953191x^2 - 0.212897x + 2.500000
+
+=== COMPARISON SUMMARY ===
+Maximum difference: 30.375357
+Cubic spline interpolation error: 0.00e+00
+Polynomial interpolation error: 5.34e-12
+
+Recommendations:
+- Use cubic spline for smooth, natural-looking curves
+- Use polynomial for analytical/theoretical work
+- Cubic spline is more stable for interpolation
+- Polynomial may oscillate with high-degree interpolation
