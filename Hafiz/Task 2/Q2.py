@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def initialize_T(N=100, radius=25, T_hot=100.0):
-    """Create T with a hot circle of radius 'radius' in the center."""
     T = np.zeros((N, N), dtype=float)
     cx = cy = (N - 1) / 2.0
     y, x = np.ogrid[0:N, 0:N]
@@ -12,9 +11,7 @@ def initialize_T(N=100, radius=25, T_hot=100.0):
     return T
 
 def diffuse(T, lam):
-    """One time‑step of 5‑point diffusion with Neumann (zero‑flux) BCs."""
     Tn = T.copy()
-    # interior update i=1…N‑2, j=1…N‑2
     Tn[1:-1,1:-1] = (
         T[1:-1,1:-1]
         + lam * (
@@ -23,15 +20,13 @@ def diffuse(T, lam):
           - 4*T[1:-1,1:-1]
         )
     )
-    # Neumann BCs: copy adjacent value
-    Tn[:,  0] = Tn[:,  1]   # left edge
-    Tn[:, -1] = Tn[:, -2]   # right edge
-    Tn[ 0, :] = Tn[ 1, :]   # top edge
-    Tn[-1, :] = Tn[-2, :]   # bottom edge
+    Tn[:,  0] = Tn[:,  1]  
+    Tn[:, -1] = Tn[:, -2]   
+    Tn[ 0, :] = Tn[ 1, :]   
+    Tn[-1, :] = Tn[-2, :]   
     return Tn
 
 def plot_snapshots(snapshots, lam):
-    """Plot a list of (step, T) pairs in subplots."""
     n = len(snapshots)
     fig, axes = plt.subplots(1, n, figsize=(4*n, 4), constrained_layout=True)
     if n == 1:
@@ -54,17 +49,12 @@ def main():
     parser.add_argument("--snapshots", type=int, nargs="+", default=[0, 10, 100],
                         help="Time‑steps at which to plot T")
     args = parser.parse_args()
-
-    # Initialize
     T = initialize_T(N=100, radius=25, T_hot=100.0)
-    # Prepare snapshots
     snaps = []
     for step in range(args.steps + 1):
         if step in args.snapshots:
             snaps.append((step, T.copy()))
         T = diffuse(T, args.lam)
-
-    # Plot
     plot_snapshots(snaps, args.lam)
 
 if __name__ == "__main__":

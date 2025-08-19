@@ -3,10 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def estimate_pi(n_points):
-    # sample (x,y) uniformly in [0,1]^2
     x = np.random.rand(n_points)
     y = np.random.rand(n_points)
-    # count how many fall within the unit quarter‐circle x^2+y^2 <= 1
     inside = np.sum(x*x + y*y <= 1.0)
     return 4.0 * inside / n_points
 
@@ -18,7 +16,6 @@ def main(sample_sizes):
         results.append((n, pi_est, error))
         print(f"N={int(n):>8,} → π≈{pi_est:.6f}   error={error:.6f}")
 
-    # Plotting
     sizes = [r[0] for r in results]
     estimates = [r[1] for r in results]
 
@@ -34,7 +31,6 @@ def main(sample_sizes):
     plt.show()
 
 if __name__ == "__main__":
-    # default sample sizes if none given
     if len(sys.argv) > 1:
         sizes = [float(arg) for arg in sys.argv[1:]]
     else:
