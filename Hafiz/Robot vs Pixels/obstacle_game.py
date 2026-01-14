@@ -39,6 +39,130 @@ def particle_dynamics(x, u):
     return np.array([px_next, py_next, vx_next, vy_next])
 
 
+def _closest_mask_point(obs_mask, px, py, max_search=40):
+    if obs_mask is None:
+        return None
+    xi = int(round(px))
+    yi = int(round(py))
+    x0 = max(0, xi - max_search)
+    x1 = min(WIDTH - 1, xi + max_search)
+    y0 = max(0, yi - max_search)
+    y1 = min(HEIGHT - 1, yi + max_search)
+    best = None
+    best_d2 = None
+    try:
+        for xx in range(x0, x1 + 1):
+            for yy in range(y0, y1 + 1):
+                if obs_mask.get_at((xx, yy)):
+                    dx = xx - px
+                    dy = yy - py
+                    d2 = dx * dx + dy * dy
+                    if best is None or d2 < best_d2:
+                        best_d2 = d2
+                        best = (float(xx), float(yy))
+                        if best_d2 <= 1.0:
+                            return best
+    except Exception:
+        return None
+    return best
+
+
+def safety_filter_masked(
+    u_des,
+    state,
+    obstacles,
+    safety_margin=6.0,
+    alpha=0.03,
+    max_acc=8.0,
+    slack_penalty=1e3,
+    max_search=40,
+):
+    px, py, vx, vy = state
+    n_obs = len(obstacles) if obstacles else 0
+    if n_obs == 0:
+        return u_des, None
+
+    u_var = cp.Variable(2)
+    s_var = cp.Variable(n_obs, nonneg=True)
+
+    obj = cp.sum_squares(u_var - u_des) + slack_penalty * cp.sum_squares(s_var)
+    constraints = [u_var <= max_acc, u_var >= -max_acc]
+
+    DT2 = DT * DT
+    delta_nom = np.array([vx, vy]) * (1.0 + DAMPING) * DT
+
+    any_constraint = False
+    obs_idx = 0
+    for obs in obstacles:
+        try:
+            mask = obs.get("mask", None)
+            if mask is None:
+                obs_idx += 1
+                continue
+            closest = _closest_mask_point(mask, px, py, max_search=max_search)
+            if closest is None:
+                obs_idx += 1
+                continue
+            cx, cy = closest
+            dx = px - cx
+            dy = py - cy
+            dist = np.hypot(dx, dy)
+            h = dist * dist - (safety_margin) ** 2
+
+            if h > (safety_margin * 6) ** 2:
+                obs_idx += 1
+                continue
+
+            grad = np.array([2.0 * dx, 2.0 * dy], dtype=float)
+            norm = np.linalg.norm(grad)
+            if norm < 1e-6:
+                gdir = -np.array([vx, vy], dtype=float)
+                if np.linalg.norm(gdir) < 1e-6:
+                    gdir = np.array([1.0, 0.0], dtype=float)
+                grad_unit = gdir / np.linalg.norm(gdir)
+            else:
+                grad_unit = grad / norm
+
+            rhs = -alpha * h - h - float(np.dot(grad_unit, delta_nom))
+            a_coeff = grad_unit * DT2
+
+            constraints.append(
+                a_coeff[0] * u_var[0] + a_coeff[1] * u_var[1] + s_var[obs_idx] >= rhs
+            )
+            any_constraint = True
+            obs_idx += 1
+        except Exception:
+            obs_idx += 1
+            continue
+
+    if not any_constraint:
+        return u_des, None
+
+    prob = cp.Problem(cp.Minimize(obj), constraints)
+    solved = False
+    for solver in [cp.OSQP, cp.SCS]:
+        try:
+            prob.solve(solver=solver, warm_start=True, verbose=False)
+            if prob.status in ("optimal", "optimal_inaccurate"):
+                solved = True
+                break
+        except Exception:
+            continue
+
+    if not solved or u_var.value is None:
+        return u_des, None
+
+    u_val = np.array(u_var.value).astype(float).flatten()
+    slack_val = (
+        np.array(s_var.value).astype(float).flatten()
+        if s_var.value is not None
+        else None
+    )
+    if np.any(np.isnan(u_val)):
+        return u_des, slack_val
+    return u_val, slack_val
+
+
 def linearize_particle_dynamics():
     A = np.array([[1, 0, DT, 0], [0, 1, 0, DT], [0, 0, DAMPING, 0], [0, 0, 0, DAMPING]])
     B = np.array([[0, 0], [0, 0], [DT, 0], [0, DT]])
@@ -99,8 +223,27 @@ def solve_feedback_control(r_k1, v_k, start_state, rho, obstacles=None):
     u_path = np.zeros((N, n_controls))
     x_path[0] = start_state
 
+    slack_iter_max = 0.0
     for t in range(N):
-        u_path[t] = K_feedback[t] @ x_path[t] + k_feedforward[t]
+        u_des = K_feedback[t] @ x_path[t] + k_feedforward[t]
+        if obstacles and point_near_any_obstacle(
+            x_path[t, 0], x_path[t, 1], obstacles, near_margin=12
+        ):
+            u_safe, slack_vals = safety_filter_masked(
+                u_des,
+                x_path[t],
+                obstacles,
+                safety_margin=6.0,
+                alpha=0.03,
+                max_acc=8.0,
+                slack_penalty=1e3,
+                max_search=40,
+            )
+            if slack_vals is not None:
+                slack_iter_max = max(slack_iter_max, float(np.max(slack_vals)))
+        else:
+            u_safe = u_des
+        u_path[t] = u_safe
         x_path[t + 1] = particle_dynamics(x_path[t], u_path[t])
 
     return x_path, u_path
@@ -228,6 +371,26 @@ def point_in_any_obstacle(x, y, obstacles, margin=0):
         except Exception:
             continue
     return False
+
+
+def min_h_along_path(path_xy, obstacles, safety_margin=0.0, max_search=60):
+    minh = float("inf")
+    for px, py in path_xy:
+        for obs in obstacles:
+            mask = obs.get("mask", None)
+            if mask is None:
+                continue
+            closest = _closest_mask_point(mask, px, py, max_search=max_search)
+            if closest is None:
+                continue
+            dx = px - closest[0]
+            dy = py - closest[1]
+            h = dx * dx + dy * dy - (safety_margin) ** 2
+            if h < minh:
+                minh = h
+    if minh == float("inf"):
+        return None
+    return minh
 
 
 def point_near_any_obstacle(x, y, obstacles, near_margin=12):
@@ -386,8 +549,14 @@ def solve_admm_ocp(start_pos, goal_pos, obstacles):
             if not history_x:
                 history_x.append(x[:, :2].copy())
             break
-
         r = project_path_onto_constraints(r_proposed, obstacles)
+        try:
+            if r.shape == r_proposed.shape:
+                if np.any(np.abs(r_proposed[:, 2:]) > 1e-9):
+                    r[:, 2:] = r_proposed[:, 2:]
+        except Exception:
+            pass
+
         x, u = solve_feedback_control(r, v, start_state, RHO, obstacles=obstacles)
         v = v + (x - r)
 
