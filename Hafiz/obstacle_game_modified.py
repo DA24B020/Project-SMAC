@@ -609,16 +609,44 @@ def solve_admm_ocp(start_pos, goal_pos, obstacles):
 
     return history_r, history_x, status
 
-def update_distance_plot(distances, time_steps):
-    plt.figure(1) # Ensure we are targeting the graph window
+def update_dashboard(dist_h, time_h, vel_h, acc_h, goal_pos, obstacles):
+    plt.figure(1)
     plt.clf()
-    plt.plot(time_steps, distances, 'r-', linewidth=2)
-    plt.title("Distance to Goal Over Time")
-    plt.xlabel("Time Step (k)")
-    plt.ylabel("Distance (pixels)")
-    plt.grid(True)
+
+    # (1,1) Velocity and Acceleration (Twin Y)
+    ax1 = plt.subplot(2, 2, 1)
+    ax1.plot(time_h, vel_h, 'b-', label='Velocity')
+    ax1.set_ylabel('Vel', color='b')
+    ax2 = ax1.twinx()
+    ax2.plot(time_h, acc_h, 'g-', label='Accel')
+    ax2.set_ylabel('Accel', color='g')
+    plt.title("Dynamics")
+
+    # (1,2) Distance from Goal
+    plt.subplot(2, 2, 2)
+    plt.plot(time_h, dist_h, 'r-')
+    plt.title("Dist to Goal")
+
+    # Heatmap Setup
+    x_range = np.linspace(0, 800, 30)
+    y_range = np.linspace(0, 600, 30)
+    X, Y = np.meshgrid(x_range, y_range)
+
+    # (2,1) Planner Cost (Quadratic Goal + Obstacle Penalty)
+    plt.subplot(2, 2, 3)
+    Z_plan = 0.5 * ((X - goal_pos[0])**2 + (Y - goal_pos[1])**2)
+    plt.contourf(X, Y, Z_plan, cmap='viridis')
+    plt.title("Planner Cost")
+
+    # (2,2) Generator Cost (Terminal state focus)
+    plt.subplot(2, 2, 4)
+    Z_gen = np.sqrt((X - goal_pos[0])**2 + (Y - goal_pos[1])**2)
+    plt.contourf(X, Y, Z_gen, cmap='magma')
+    plt.title("Generator Cost")
+
+    plt.tight_layout()
     plt.draw()
-    plt.pause(0.001) # This gives Matplotlib the 'tick' it needs to draw the window
+    plt.pause(0.001)
 
 def get_a_star_path(start, goal, obstacles, width, height, step=10):
     """Calculates a path from start to goal using A* on a grid."""
@@ -739,6 +767,8 @@ if __name__ == "__main__":
     
     ROCKET_SPEED_FACTOR = 15.0
 
+    vel_history, accel_history = [], []
+    
     if FIX_START_AT_ORIGIN:
         start_pos = ORIGIN
 
@@ -760,6 +790,8 @@ if __name__ == "__main__":
                 drawing_obstacle = False
                 game_state = "idle"
                 distance_history = []
+                vel_history = []
+                accel_history = []
                 time_history = []
                 plt.clf()
                 if FIX_START_AT_ORIGIN:
@@ -875,11 +907,25 @@ if __name__ == "__main__":
             if final_x is not None:
                 current_idx = min(int(rocket_anim_t), N)
                 if current_idx not in time_history:
-                    current_pos = final_x[current_idx][:2]
-                    dist = np.linalg.norm(np.array(current_pos) - np.array(goal_pos))
+
+                    state = final_x[current_idx]
+                    dist = np.linalg.norm(state[:2] - np.array(goal_pos))
+                    vel_mag = np.linalg.norm(state[2:])
+                    
+                    # Acceleration Approximation
+                    accel_mag = 0
+                    if current_idx > 0:
+                        prev_vel = final_x[current_idx-1][2:]
+                        accel_mag = np.linalg.norm(state[2:] - final_x[current_idx-1][2:]) / DT
+
+                    # Update Histories
                     time_history.append(current_idx)
                     distance_history.append(dist)
-                    update_distance_plot(distance_history, time_history)
+                    vel_history.append(vel_mag)
+                    accel_history.append(accel_mag)
+                    
+                    # Call New Dashboard
+                    update_dashboard(distance_history, time_history, vel_history, accel_history, goal_pos, obstacles)
                     
             if rocket_anim_t >= N:
                 game_state = "solved_static"
