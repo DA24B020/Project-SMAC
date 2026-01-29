@@ -6,6 +6,7 @@ import time
 import matplotlib
 matplotlib.use('TkAgg') # Or 'Qt5Agg' if you have PyQt installed
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 import heapq
 
@@ -613,40 +614,151 @@ def update_dashboard(dist_h, time_h, vel_h, acc_h, goal_pos, obstacles):
     plt.figure(1)
     plt.clf()
 
-    # (1,1) Velocity and Acceleration (Twin Y)
+    # (1,1) Real-time Dynamics: Velocity and Acceleration
     ax1 = plt.subplot(2, 2, 1)
     ax1.plot(time_h, vel_h, 'b-', label='Velocity')
-    ax1.set_ylabel('Vel', color='b')
+    ax1.set_ylabel('Velocity', color='b')
+    ax1.tick_params(axis='y', labelcolor='b')
+    
     ax2 = ax1.twinx()
     ax2.plot(time_h, acc_h, 'g-', label='Accel')
-    ax2.set_ylabel('Accel', color='g')
-    plt.title("Dynamics")
+    ax2.set_ylabel('Acceleration', color='g')
+    ax2.tick_params(axis='y', labelcolor='g')
+    plt.title("Dynamics (px/s & px/s²)")
 
-    # (1,2) Distance from Goal
+    # (1,2) Progress: Distance from Goal
     plt.subplot(2, 2, 2)
     plt.plot(time_h, dist_h, 'r-')
-    plt.title("Dist to Goal")
+    plt.title("Distance to Goal")
+    plt.ylabel("Pixels")
 
-    # Heatmap Setup
-    x_range = np.linspace(0, 800, 30)
-    y_range = np.linspace(0, 600, 30)
+    # High-resolution Domain Setup (800x600)
+    x_range = np.linspace(0, 800, 100)
+    y_range = np.linspace(0, 600, 100)
     X, Y = np.meshgrid(x_range, y_range)
 
-    # (2,1) Planner Cost (Quadratic Goal + Obstacle Penalty)
-    plt.subplot(2, 2, 3)
-    Z_plan = 0.5 * ((X - goal_pos[0])**2 + (Y - goal_pos[1])**2)
-    plt.contourf(X, Y, Z_plan, cmap='viridis')
-    plt.title("Planner Cost")
+    # (2,1) Planner Cost: (rho/2) * ||x - r + v||^2 equivalent 
+    # Visualizing the tracking focus around the goal position
+    # rho = 10.0 based on your solve_admm_ocp settings
+    rho = 10.0
+    # Use a small epsilon (+1) to avoid log(0) errors
+    Z_plan = (rho / 2.0) * ((X - goal_pos[0])**2 + (Y - goal_pos[1])**2)
+    
+    for obs in obstacles:
+        poly = np.array(obs["poly"])
+        center = np.mean(poly, axis=0)
+        # Circular radius logic
+        radius = np.linalg.norm(poly[0] - center) 
+        
+        dist_to_obs = np.sqrt((X - center[0])**2 + (Y - center[1])**2)
+        # Apply a massive penalty to represent the obstacle "wall"
+        Z_plan[dist_to_obs <= radius] += 1e12 
 
-    # (2,2) Generator Cost (Terminal state focus)
+    plt.subplot(2, 2, 3)
+    # LogNorm allows us to see the subtle tracking gradient and the huge obstacles simultaneously
+    plt.contourf(X, Y, Z_plan, levels=50, cmap='viridis', 
+                 norm=mcolors.LogNorm(vmin=Z_plan.min() + 1, vmax=1e10))
+    plt.colorbar(label='Log Cost')
+    plt.title("Planner Cost Map")
+    plt.gca().invert_yaxis()
+    # Base Cost: 10000.0 * ||r_N - goal||^2
+    Z_gen = 10000.0 * ((X - goal_pos[0])**2 + (Y - goal_pos[1])**2)
+
+    # Add exact circular obstacle penalties
+    for obs in obstacles:
+        poly = np.array(obs["poly"])
+        center = np.mean(poly, axis=0)
+        # Use exact radius for circular logic
+        radius = np.linalg.norm(poly[0] - center) 
+        
+        # Calculate distance of every grid point to this circle's center
+        dist_to_center = np.sqrt((X - center[0])**2 + (Y - center[1])**2)
+        # Apply penalty to points inside the circle
+        Z_gen[dist_to_center <= radius] += 1e12 
+
+    # (2,2) Exact Environment Heatmap
     plt.subplot(2, 2, 4)
-    Z_gen = np.sqrt((X - goal_pos[0])**2 + (Y - goal_pos[1])**2)
-    plt.contourf(X, Y, Z_gen, cmap='magma')
-    plt.title("Generator Cost")
+    # We use a LogNorm so the gradient stays visible despite the 1e12 penalty
+    plt.contourf(X, Y, Z_gen, levels=50, cmap='magma', 
+                 norm=mcolors.LogNorm(vmin=Z_gen.min()+1, vmax=1e10))
+    plt.colorbar(label='Log Cost')
+    plt.title("Generator Cost Map")
+    plt.gca().invert_yaxis() 
 
     plt.tight_layout()
     plt.draw()
     plt.pause(0.001)
+    
+# def update_dashboard(dist_h, time_h, vel_h, acc_h, goal_pos, obstacles):
+#     plt.figure(1)
+#     plt.clf()
+
+#     # (1,1) Dynamics: Velocity and Acceleration
+#     ax1 = plt.subplot(2, 2, 1)
+#     ax1.plot(time_h, vel_h, 'b-', label='Velocity')
+#     ax1.set_ylabel('Velocity', color='b')
+#     ax2 = ax1.twinx()
+#     ax2.plot(time_h, acc_h, 'g-', label='Accel')
+#     ax2.set_ylabel('Acceleration', color='g')
+#     plt.title("Real-time Dynamics")
+
+#     # (1,2) Progress: Distance from Goal
+#     plt.subplot(2, 2, 2)
+#     plt.plot(time_h, dist_h, 'r-')
+#     plt.title("Distance to Goal")
+#     plt.ylabel("Pixels")
+
+#     # Domain Setup to match Pygame (800x600)
+#     x_range = np.linspace(0, 800, 100)
+#     y_range = np.linspace(0, 600, 100)
+#     X, Y = np.meshgrid(x_range, y_range)
+
+#     # (2,1) Planner Cost: (rho/2) * ||x - r + v||^2 equivalent 
+#     # Visualizing the tracking focus around the goal position
+#     # rho = 10.0 based on your solve_admm_ocp settings
+#     rho = 10.0
+#     Z_plan = (rho / 2.0) * ((X - goal_pos[0])**2 + (Y - goal_pos[1])**2)
+#     for obs in obstacles:
+#         # Create a penalty 'bump' for the obstacle area
+#         # We approximate the oval/poly as a high-cost region
+#         poly = np.array(obs["poly"])
+#         center = np.mean(poly, axis=0)
+#         # Approximate radius for the penalty visualization
+#         radius = np.max(np.linalg.norm(poly - center, axis=1))
+        
+#         # Add a massive cost spike where the obstacle is
+#         dist_to_obs = np.sqrt((X - center[0])**2 + (Y - center[1])**2)
+#         Z_plan[dist_to_obs < radius] += 1e6 # High penalty value
+
+#     plt.subplot(2, 2, 3)
+#     # Use log scale or 'vmax' to keep the goal visible despite the penalty spike
+#     plt.contourf(X, Y, Z_plan, levels=50, cmap='viridis', vmax=np.percentile(Z_plan, 95))
+#     plt.colorbar(label='Cost')
+#     plt.title("Environment Cost Map")
+#     plt.gca().invert_yaxis()
+
+#     # (2,2) Generator Cost: Terminal focus 10000.0 * ||r_N - goal||^2
+#     Z_gen = 10000.0 * ((X - goal_pos[0])**2 + (Y - goal_pos[1])**2)
+#     for obs in obstacles:
+#         # Create a penalty 'bump' for the obstacle area
+#         # We approximate the oval/poly as a high-cost region
+#         poly = np.array(obs["poly"])
+#         center = np.mean(poly, axis=0)
+#         # Approximate radius for the penalty visualization
+#         radius = np.max(np.linalg.norm(poly - center, axis=1))
+        
+#         # Add a massive cost spike where the obstacle is
+#         dist_to_obs = np.sqrt((X - center[0])**2 + (Y - center[1])**2)
+#         Z_gen[dist_to_obs < radius] += 1e6 # High penalty value
+#     plt.subplot(2, 2, 4)
+#     plt.contourf(X, Y, Z_gen, levels=50, cmap='magma', vmax=np.percentile(Z_gen, 95))
+#     plt.colorbar(label='Cost')
+#     plt.title("Terminal Goal Cost")
+#     plt.gca().invert_yaxis() # Match Pygame's coordinate system
+
+#     plt.tight_layout()
+#     plt.draw()
+#     plt.pause(0.001)
 
 def get_a_star_path(start, goal, obstacles, width, height, step=10):
     """Calculates a path from start to goal using A* on a grid."""
@@ -715,6 +827,8 @@ if __name__ == "__main__":
     
     # New tracking variables
     distance_history = []
+    vel_history = []
+    accel_history = []
     time_history = []
     
     ENV_LEFT = 0 + BOUND_MARGIN
@@ -766,8 +880,6 @@ if __name__ == "__main__":
     a_star_path = None
     
     ROCKET_SPEED_FACTOR = 15.0
-
-    vel_history, accel_history = [], []
     
     if FIX_START_AT_ORIGIN:
         start_pos = ORIGIN
@@ -910,13 +1022,18 @@ if __name__ == "__main__":
 
                     state = final_x[current_idx]
                     dist = np.linalg.norm(state[:2] - np.array(goal_pos))
-                    vel_mag = np.linalg.norm(state[2:])
-                    
+                                        
                     # Acceleration Approximation
                     accel_mag = 0
-                    if current_idx > 0:
-                        prev_vel = final_x[current_idx-1][2:]
-                        accel_mag = np.linalg.norm(state[2:] - final_x[current_idx-1][2:]) / DT
+                    vel_mag = 0
+                    if current_idx > 2:
+                        prev_state = final_x[current_idx - 1]
+                        displacement = np.linalg.norm(state[:2] - prev_state[:2])
+                        vel_mag = displacement / DT
+                        
+                        # prev_vel = final_x[current_idx-1][2:]
+                        # accel_mag = np.linalg.norm(state[2:] - final_x[current_idx-1][2:]) / DT
+                        accel_mag = abs(vel_mag - vel_history[-1]) / DT
 
                     # Update Histories
                     time_history.append(current_idx)
