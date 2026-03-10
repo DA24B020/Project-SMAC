@@ -391,7 +391,7 @@ def main():
         if simulation_active:
             # 1. CHECK GOAL REACHED (New Code)
             dist_to_goal = np.linalg.norm(robot_pos - goal_pos)
-            if dist_to_goal < 25.0: # 25 pixels tolerance
+            if dist_to_goal < 10.0: #
                 print("GOAL REACHED!")
                 simulation_active = False # Stop the simulation
                 robot_vel = np.zeros(2)   # Kill velocity
@@ -433,7 +433,7 @@ def main():
 
         # Draw Path
         if path and len(path) > 1:
-            pygame.draw.lines(screen, GRAY, False, path, 2)
+            pygame.draw.lines(screen, WHITE, False, path, 2)
             pygame.draw.circle(screen, YELLOW, (int(rabbit[0]), int(rabbit[1])), 5)
 
         # Draw Robot

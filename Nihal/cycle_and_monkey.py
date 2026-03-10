@@ -290,7 +290,7 @@ def main():
         # LOGIC
         if simulation_active:
             # Check Win (STOP and SNAP)
-            if np.linalg.norm(robot_pos - goal_pos) < 25.0:
+            if np.linalg.norm(robot_pos - goal_pos) < 10.0:
                 print("GOAL REACHED")
                 simulation_active = False
                 robot_vel = np.zeros(2)
@@ -364,7 +364,7 @@ def main():
         
         # Draw Path
         if path and len(path) > 1:
-            pygame.draw.lines(screen, (60, 60, 70), False, path, 2)
+            pygame.draw.lines(screen, (200, 200, 200), False, path, 2)
 
         # Update Angle ONLY if moving significantly
         speed = np.linalg.norm(robot_vel)
