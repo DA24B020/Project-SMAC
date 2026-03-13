@@ -290,11 +290,11 @@ def main():
         # LOGIC
         if simulation_active:
             # Check Win (STOP and SNAP)
-            if np.linalg.norm(robot_pos - goal_pos) < 10.0:
+            if np.linalg.norm(robot_pos - goal_pos) < 25.0:
                 print("GOAL REACHED")
                 simulation_active = False
                 robot_vel = np.zeros(2)
-                robot_pos = goal_pos.copy()
+                #robot_pos = goal_pos.copy()
                 # We DO NOT reset last_known_angle here, so it stays looking at the win
                 continue
 

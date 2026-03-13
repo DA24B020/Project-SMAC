@@ -391,11 +391,11 @@ def main():
         if simulation_active:
             # 1. CHECK GOAL REACHED (New Code)
             dist_to_goal = np.linalg.norm(robot_pos - goal_pos)
-            if dist_to_goal < 10.0: #
+            if dist_to_goal < 25.0: #
                 print("GOAL REACHED!")
                 simulation_active = False # Stop the simulation
                 robot_vel = np.zeros(2)   # Kill velocity
-                robot_pos = goal_pos.copy() # Snap to center (optional, looks clean)
+                #robot_pos = goal_pos.copy() # Snap to center (optional, looks clean)
                 continue
             for obs in obstacles: obs.update(dt)
             resolve_collisions(obstacles)
